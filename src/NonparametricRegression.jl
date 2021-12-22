@@ -1,5 +1,7 @@
 """
-Placeholder for a short summary about NonparametricRegression.
+NonparametricRegression.jl implements local regression methods, also known as kernel regression.
+
+Type `? npregress` for more detail.
 """
 module NonparametricRegression
 
@@ -146,7 +148,7 @@ function leaveoneoutCV_mse(h,x,y; kernelfun::Function=NormalKernel, method=:lc)
         for i in 1:N
             xtmp = view(x,filter(!=(i),inds))
             ytmp = view(y,filter(!=(i),inds))
-		    pred = locallinear(xtmp,ytmp,[x[i]], h; kernelfun)
+		    pred = only(locallinear(xtmp,ytmp,[x[i]], h; kernelfun))
             mse += (y[i] - pred)^2 * kde[i] / N
         end
 	else
@@ -202,7 +204,7 @@ end
 ##### CONVENIENCE METHODS 
 ########################################
 ########################################
-function optimalbandwidth(x, y, xgrid=x; kernelfun::Function=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB=1e-2, hUB=10.0)
+function optimalbandwidth(x, y; kernelfun::Function=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB=1e-2, hUB=10.0)
     # automatically select bandwidth
     if bandwidthselection in (:cv, :loocv, :leaveoneoutcv)
         h = leaveoneoutCV(x,y; kernelfun, method, hLB, hUB)
@@ -228,7 +230,7 @@ end
 
 
 function npregress(x, y, xgrid=x; kernelfun::Function=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB=1e-2, hUB=10.0)
-    h = optimalbandwidth(x,y,xgrid,h; kernelfun, method, bandwidthselection, hLB, hUB)
+    h = optimalbandwidth(x,y; kernelfun, method, bandwidthselection, hLB, hUB)
     return npregress(x,y,xgrid,h; kernelfun, method)
 end
 

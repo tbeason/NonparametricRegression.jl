@@ -18,9 +18,9 @@
 
 This package implements non-parametric regression, also called local regression or kernel regression. Currently the functionality is limited to univariate regressions and to only the local constant (`localconstant`) and local linear (`locallinear`) estimators. Automatic bandwidth selection is done by leave-one-out cross validation or by optimizing the bias-corrected AICc statistic.
 
-The two important exported convenience methods are `npregress` and `optimalbandwith` which abstract from a lot of the implementation detail and allow you to easily switch estimators or bandwidth selection procedures.
+The two important exported convenience methods are `npregress` and `optimalbandwidth` which abstract from a lot of the implementation detail and allow you to easily switch estimators or bandwidth selection procedures.
 
-Computations are done in a direct and "vectorized" manner, so it is best suited for smaller data. Allocations can be substantially reduced without changing the API much if the need is there.
+
 
 ## Examples
 
@@ -31,9 +31,16 @@ npregress
 
 ```
 
+## Detail
+
+- Scaled Gaussian kernel by default (`NormalKernel(h)` where `h` is the bandwidth). Kernel functionality is provided by KernelFunctions.jl.
+- Computations are done in a direct and "vectorized" manner, so it is best suited for smaller data. Allocations can be substantially reduced and potentially multithreaded without changing the API much if the need is there (PRs welcome).
+
 
 ## Related
 
-KernelDensity.jl is a nice package for doing kernel density estimation.
+KernelDensity.jl is a nice package for doing kernel density estimation. 
 
 KernelEstimators.jl is an outdated package which I found after already implementing most of this package. Consider this an updated version I guess.
+
+LOESS.jl is a package implementing a similar but different type of local regression (loess, obviously).
