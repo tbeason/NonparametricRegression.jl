@@ -9,7 +9,7 @@ vn = randn(rng,30)
 vm = rand(rng,20,20)
 
 # write tests here
-@testset "NonparametricRegression Tests" begin
+@testset verbose=true "NonparametricRegression Tests" begin
 
 N = 2500
 xs = randn(rng,N)
@@ -50,6 +50,9 @@ xg = collect(-1:0.5:1)
 
         nplc2 = npregress(xs,ys,xg; method=:lc, bandwidthselection=:loocv)
         @test nplc2 ≈ lc2
+
+        nplc3 = npregress(xs,ys,xg; method=:lc, bandwidthselection=:aicc)
+        @test nplc3 ≈ lc3
     end
 
     
@@ -64,7 +67,7 @@ xg = collect(-1:0.5:1)
 
         aicc_h = optimizeAICc(xs,ys; method=:ll)
         # println(aicc_h)
-        ll3 = localconstant(xs,ys,xg,aicc_h)
+        ll3 = locallinear(xs,ys,xg,aicc_h)
         @test ll3[3] ≈ 2 rtol=1e-2
 
         # println([ll2 ;; ll3])
@@ -74,6 +77,19 @@ xg = collect(-1:0.5:1)
 
         npll2 = npregress(xs,ys,xg; method=:ll, bandwidthselection=:loocv)
         @test npll2 ≈ ll2
+
+        npll3 = npregress(xs,ys,xg; method=:ll, bandwidthselection=:aicc)
+        @test npll3 ≈ ll3
+
+        ll3ab = llalphabeta(xs,ys,xg,aicc_h)
+        @test first(ll3ab) ≈ ll3
+    end
+
+    @testset "errors" begin
+        @test_throws ErrorException npregress(xs,ys,xg,1; method=:hello)
+        @test_throws ErrorException npregress(xs,ys,xg; method=:lc, bandwidthselection=:hello)
+        @test_throws ErrorException npregress(xs,ys,xg; method=:hello, bandwidthselection=:loocv)
+        @test_throws ErrorException npregress(xs,ys,xg; method=:hello, bandwidthselection=:aicc)
     end
 
 end
