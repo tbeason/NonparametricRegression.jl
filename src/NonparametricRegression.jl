@@ -241,22 +241,24 @@ end
 ##### CURRENTLY UNUSED METHODS (BUT MAYBE RELEVANT FOR FUTURE WORK)
 ########################################
 ########################################
-function transformedresiduals(y::AbstractVector{T1},H::AbstractMatrix{T2}; method=:HC3) where {T1,T2}
-	r = y .- H*y
-	if method == :HC0
-		return r
-	elseif method == :HC1
-		error("HC1 not implemented")
-	elseif method == :HC2
-		Hd = diag(H)
-		return r./sqrt.(1 .- Hd)
-	elseif method == :HC3
-		Hd = diag(H)
-		return r./(1 .- Hd)
-	else
-		error("unknown method")
-	end
-end
+## commented out to increase coverage :)
+
+# function transformedresiduals(y::AbstractVector{T1},H::AbstractMatrix{T2}; method=:HC3) where {T1,T2}
+# 	r = y .- H*y
+# 	if method == :HC0
+# 		return r
+# 	elseif method == :HC1
+# 		error("HC1 not implemented")
+# 	elseif method == :HC2
+# 		Hd = diag(H)
+# 		return r./sqrt.(1 .- Hd)
+# 	elseif method == :HC3
+# 		Hd = diag(H)
+# 		return r./(1 .- Hd)
+# 	else
+# 		error("unknown method")
+# 	end
+# end
 
 
 

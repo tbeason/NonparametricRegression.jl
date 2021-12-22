@@ -1,12 +1,11 @@
 using NonparametricRegression
-using Distributions, KernelFunctions, LinearAlgebra
-using StableRNGs
+using KernelFunctions, LinearAlgebra
+using StableRNGs, Distributions
 using Test
 
 
 rng = StableRNG(123)
-vn = randn(rng,100)
-vn[1] = 0.0
+vn = randn(rng,30)
 vm = rand(rng,20,20)
 
 # write tests here
@@ -33,7 +32,7 @@ end
 
 
 @testset "KDE" begin
-    @test NonparametricRegression.silvermanbw(vn) ≈ 0.35984995544649584
+    @test NonparametricRegression.silvermanbw(vn) ≈ 0.4183944776432713
 
     kd = NonparametricRegression.densityestimator(randn(rng,2000),[0.0,1.0])
 

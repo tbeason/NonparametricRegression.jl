@@ -8,10 +8,7 @@
 ![lifecycle](https://img.shields.io/badge/lifecycle-archived-red.svg)
 ![lifecycle](https://img.shields.io/badge/lifecycle-dormant-blue.svg) -->
 [![build](https://github.com/tbeason/NonparametricRegression.jl/workflows/CI/badge.svg)](https://github.com/tbeason/NonparametricRegression.jl/actions?query=workflow%3ACI)
-<!-- travis-ci.com badge, uncomment or delete as needed, depending on whether you are using that service. -->
-<!-- [![Build Status](https://travis-ci.com/tbeason/NonparametricRegression.jl.svg?branch=master)](https://travis-ci.com/tbeason/NonparametricRegression.jl) -->
-<!-- Coverage badge on codecov.io, which is used by default. -->
-[![codecov.io](http://codecov.io/github/tbeason/NonparametricRegression.jl/coverage.svg?branch=master)](http://codecov.io/github/tbeason/NonparametricRegression.jl?branch=master)
+[![codecov.io](http://codecov.io/github/tbeason/NonparametricRegression.jl/coverage.svg?branch=main)](http://codecov.io/github/tbeason/NonparametricRegression.jl?branch=main)
 <!-- Documentation -- uncomment or delete as needed -->
 <!--
 [![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://tbeason.github.io/NonparametricRegression.jl/stable)
@@ -23,7 +20,7 @@ This package implements non-parametric regression, also called local regression 
 
 The two important exported convenience methods are `npregress` and `optimalbandwith` which abstract from a lot of the implementation detail and allow you to easily switch estimators or bandwidth selection procedures.
 
-Computations are computed in a direct and "vectorized" manner, so it is best suited for smaller data. Allocations can be substantially reduced without changing the API much if the need is there.
+Computations are done in a direct and "vectorized" manner, so it is best suited for smaller data. Allocations can be substantially reduced without changing the API much if the need is there.
 
 ## Examples
 
