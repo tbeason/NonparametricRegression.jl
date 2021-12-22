@@ -9,6 +9,7 @@ using LinearAlgebra
 using Statistics
 using KernelFunctions
 using Optim
+using DocStringExtensions
 
 export NormalKernel
 export localconstant, localconstantweights
@@ -164,6 +165,7 @@ function leaveoneoutCV(x, y; kernelfun::Function=NormalKernel, method=:lc, hLB =
 	return Optim.minimizer(opt)
 end
 
+
 ## AICc
 function AICc(y::AbstractVector{T1},H::AbstractMatrix{T2}) where {T1,T2}
 	# H == W' for nw and ll, projection matrix for linear regressions
@@ -204,6 +206,13 @@ end
 ##### CONVENIENCE METHODS 
 ########################################
 ########################################
+"""
+$SIGNATURES
+
+Search for the optimal bandwidth to use for the local regression of `y` against `x` using `method ∈ (:lc,:ll)`.
+
+The keyword argument `bandwidthselection` should be `:aicc` for the bias-correct AICc method or `:loocv` for leave-one-out cross validation. `hLB` and `hUB` are the lower and upper bounds used when searching for the optimal bandwidth.
+"""
 function optimalbandwidth(x, y; kernelfun::Function=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB=1e-2, hUB=10.0)
     # automatically select bandwidth
     if bandwidthselection in (:cv, :loocv, :leaveoneoutcv)
@@ -217,7 +226,15 @@ function optimalbandwidth(x, y; kernelfun::Function=NormalKernel, method=:lc, ba
 end
 
 
+"""
+$SIGNATURES
 
+Estimate a local regression of `y` against `x` evaluated at the values `xgrid` using bandwidth `h`.
+
+The keyword argument `method` can be `:lc` for a local constant estimator (Nadaraya-Watson) or `:ll` for a local linear estimator.
+
+The keyword argument `kernelfun` should be a function that constructs a `KernelFunctions.jl` kernel with a given bandwidth. Defaults to `NormalKernel` (defined and exported by this package.)
+"""
 function npregress(x,y,xgrid,h; kernelfun::Function=NormalKernel, method=:lc)
     if method in (:nw,:lc,:localconstant)
 		return localconstant(x,y,xgrid,h; kernelfun)
@@ -229,6 +246,17 @@ function npregress(x,y,xgrid,h; kernelfun::Function=NormalKernel, method=:lc)
 end
 
 
+"""
+$SIGNATURES
+
+Estimate a local regression of `y` against `x`, possibly evaluated at the values `xgrid`, and automatically select the optimal bandwidth.
+
+The keyword argument `method` can be `:lc` for a local constant estimator (Nadaraya-Watson) or `:ll` for a local linear estimator.
+
+The keyword argument `bandwidthselection` should be `:aicc` for the bias-correct AICc method or `:loocv` for leave-one-out cross validation. `hLB` and `hUB` are the lower and upper bounds used when searching for the optimal bandwidth.
+
+The keyword argument `kernelfun` should be a function that constructs a `KernelFunctions.jl` kernel with a given bandwidth. Defaults to `NormalKernel` (defined and exported by this package.)
+"""
 function npregress(x, y, xgrid=x; kernelfun::Function=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB=1e-2, hUB=10.0)
     h = optimalbandwidth(x,y; kernelfun, method, bandwidthselection, hLB, hUB)
     return npregress(x,y,xgrid,h; kernelfun, method)
