@@ -7,15 +7,18 @@ module NonparametricRegression
 
 using LinearAlgebra
 using Statistics
-using KernelFunctions
+using Tullio, LoopVectorization
 using Optim
 using DocStringExtensions
+
 
 export NormalKernel
 export localconstant, localconstantweights
 export locallinear, locallinearweights, llalphabeta
 export optimalbandwidth, leaveoneoutCV, optimizeAICc
 export npregress
+
+include("kernels.jl")
 
 
 ########################################
@@ -98,6 +101,7 @@ function locallinearweights(x,xgrid, h; kernelfun::Function=NormalKernel, normal
 	normalizecols!(W)
 	return W
 end
+
 
 function locallinear(x,y,xgrid, h; kernelfun::Function=NormalKernel, normalizeweights::Bool=true)
 	W = locallinearweights(x,xgrid, h; kernelfun, normalizeweights)
