@@ -16,7 +16,7 @@
 -->
 
 
-This package implements non-parametric regression, also called local regression or kernel regression. Currently the functionality is limited to univariate regressions and to only the local constant (`localconstant`) and local linear (`locallinear`) estimators. Automatic bandwidth selection is done by leave-one-out cross validation or by optimizing the bias-corrected AICc statistic.
+This package implements non-parametric regression, also called local regression or kernel regression. Currently the functionality is limited to univariate regressions and to only the local constant (`localconstant`) and local linear (`locallinear`,`llalphabeta`) estimators. Automatic bandwidth selection is done by leave-one-out cross validation or by optimizing the bias-corrected AICc statistic.
 
 The two important exported convenience methods are `npregress` and `optimalbandwidth` which abstract from a lot of the implementation detail and allow you to easily switch estimators or bandwidth selection procedures.
 
@@ -33,8 +33,9 @@ npregress
 
 ## Detail
 
-- Scaled Gaussian kernel by default (`NormalKernel(h)` where `h` is the bandwidth). Kernel functionality is provided by KernelFunctions.jl.
-- Computations are done in a direct and "vectorized" manner, so it is best suited for smaller data. Allocations can be substantially reduced and potentially multithreaded without changing the API much if the need is there (PRs welcome).
+- Scaled Gaussian kernel (`GaussianKernel`) by default (aliased by `NormalKernel(h)` where `h` is the bandwidth). Other available kernels are `UniformKernel` and `EpanechnikovKernel`. Adding a new kernel would be a relatively easy PR, see `src/kernels.jl`.
+- For local linear estimation, two functions are provided. The first is `locallinear` which explicitly computes a weighted average of `y` as in `localconstant`. The second is `llalphabeta` which computes (and returns) the intercept and slope terms of the local linear regression, the intercept of which is the expected `y`. `llalphabeta` requires only one pass over the data, so is more performant than `locallinear` because computing the weights requires 2 passes, but the results are identical modulo any small numerical epsilons.
+- Care was taken to make things non-allocating and performant. The package does not use the "binning" technique that other packages use (R's KernSmooth, for example), so on very large datasets there could be a performance loss relative to those packages. The package does not use multithreading, so again some performance gain could be had here if needed. PRs welcome.
 
 
 ## Related

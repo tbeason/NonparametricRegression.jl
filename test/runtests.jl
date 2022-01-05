@@ -1,12 +1,12 @@
 using NonparametricRegression
-using KernelFunctions, LinearAlgebra
+using LinearAlgebra
 using StableRNGs, Distributions
 using Test
 
 
 rng = StableRNG(123)
 vn = randn(rng,30)
-vm = rand(rng,20,20)
+vu = rand(rng,20)
 
 # write tests here
 @testset verbose=true "NonparametricRegression Tests" begin
@@ -18,15 +18,47 @@ xg = collect(-1:0.5:1)
 
 
 @testset "Exported" begin
-    @testset "NormalKernel" begin 
-        nk1 = NormalKernel(1)
-        @test nk1.(vn,0) ≈ pdf.(Normal(0,1),vn)
+    @testset "Kernels" begin
+        @testset "NormalKernel" begin 
+            nk1 = NormalKernel(1)
+            @test nk1.(vn,0) ≈ pdf.(Normal(0,1),vn)
+        
+            nk01 = NormalKernel(0.1)
+            @test nk01.(vn,0) ≈ pdf.(Normal(0,0.1),vn)
     
-        nk01 = NormalKernel(0.1)
-        @test nk01.(vn,0) ≈ pdf.(Normal(0,0.1),vn)
+            @test bandwidth(nk1) == 1
     
-        @test kernelmatrix(nk1,vn,vn) ≈ nk1.(vn,vn')
+            @test NonparametricRegression.scaling(nk1) ≈ 1/sqrt(2*pi)
+        end
+    
+        @testset "UniformKernel" begin 
+            u1 = UniformKernel(1)
+            @test u1.(vu,0) ≈ pdf.(Uniform(-1,1),vu)
+        
+            u01 = UniformKernel(0.1)
+            @test u01.(vu,0) ≈ pdf.(Uniform(-0.1,0.1),vu)
+    
+            @test bandwidth(u1) == 1
+    
+            @test NonparametricRegression.scaling(u1) ≈ 1/2
+        end
+    
+    
+        @testset "EpanechnikovKernel" begin 
+            ek1 = EpanechnikovKernel(1)
+            @test ek1.(vu,0) ≈ 3/4 .* (1 .- vu.^2)
+        
+            ek01 = EpanechnikovKernel(0.1)
+            @test ek01.(vu,0) ≈ 3/4 .* (1 .- (vu./0.1).^2) ./ 0.1 .* (abs.(vu./0.1) .<= 1)
+    
+            @test bandwidth(ek1) == 1
+    
+            @test NonparametricRegression.scaling(ek1) ≈ 3/4
+        end
     end
+
+
+
 
 
     @testset "localconstant" begin
@@ -53,6 +85,8 @@ xg = collect(-1:0.5:1)
 
         nplc3 = npregress(xs,ys,xg; method=:lc, bandwidthselection=:aicc)
         @test nplc3 ≈ lc3
+
+
     end
 
     
@@ -97,12 +131,7 @@ end
 
 @testset "Unexported" begin
     @testset "Utilities" begin
-
-        @test NonparametricRegression.normalizecols(vm) ≈ vm ./ sum(vm,dims=1) 
-        
-        vm0 = copy(vm)
-        NonparametricRegression.zerodiagonal!(vm0)
-        @test tr(vm0) ≈ 0
+        @test NonparametricRegression.AICc(1,1,100) ≈ 0 + 1 + 2*(1+1)/(100-1-2)
     end
     
     

@@ -7,14 +7,14 @@ module NonparametricRegression
 
 using LinearAlgebra
 using Statistics
-using Tullio, LoopVectorization
+using StaticArrays
 using Optim
 using DocStringExtensions
 
 
-export NormalKernel
+export NormalKernel, GaussianKernel, UniformKernel, EpanechnikovKernel, bandwidth
 export localconstant, localconstantweights
-export locallinear, locallinearweights, llalphabeta
+export locallinear, llalphabeta, locallinearweights
 export optimalbandwidth, leaveoneoutCV, optimizeAICc
 export npregress
 
@@ -27,32 +27,28 @@ include("kernels.jl")
 ########################################
 ########################################
 
-## MANIPULATING MATRICES
-normalizecols(X::AbstractMatrix{T}) where {T} = normalizecols!(copy(X))
-normalizecols!(X::AbstractMatrix{T}) where {T} = X ./= sum(X;dims=1)
-function zerodiagonal!(X::AbstractMatrix{T}) where {T}
-    @inbounds for i in 1:size(X,1)
-        X[i,i] = zero(T)
-    end
-end
 
-## KERNEL UTILITIES
-# extractbw(k) = 1 / only(k.kernel.transform.s)
+AICc(sigmasq,trH,Ny) = log(sigmasq) + 1 + 2*(trH + 1)/(Ny-trH-2)
 
-# note to users: treat h as the standard deviation of the data
-NormalKernel(h) = ScaledKernel(SqExponentialKernel() ∘ ScaleTransform(1/h),1/(sqrt(2*π)*h))
 
 ## KDE
 # this function is only used internally for trimmed LOOCV to prevent adding a dep on KernelDensity.jl
-function densityestimator(x,xgrid=x; h=silvermanbw(x), kernelfun::Function=NormalKernel)
+silvermanbw(x,alpha=0.9) = alpha * min(std(x), only(diff(quantile(x, [0.25, 0.75])))/1.34) * length(x)^(-1/5)
+
+function densityestimator(x,xgrid=x; h=silvermanbw(x), kernelfun=NormalKernel)
 	K = kernelfun(h)
-	W = kernelmatrix(K,x,xgrid)
-	f = mean(W;dims=1)
-	return vec(f)
+	N = length(x)
+	L = length(xgrid)
+	f = zeros(L) 	# preallocate
+	@inbounds for i in 1:L
+		for j in 1:N
+			f[i] += unscaledkern(K,x[j],xgrid[i]) 
+		end 
+		f[i] *= scaling(K) / N
+	end
+	return f
 end
 
-
-silvermanbw(x,alpha=0.9) = alpha * min(std(x), only(diff(quantile(x, [0.25, 0.75])))/1.34) * length(x)^(-1/5)
 
 
 
@@ -70,19 +66,70 @@ silvermanbw(x,alpha=0.9) = alpha * min(std(x), only(diff(quantile(x, [0.25, 0.75
 ########################################
 
 ## LOCAL CONSTANT aka NADARAYA-WATSON ESTIMATOR
-function localconstantweights(x,xgrid, h; kernelfun::Function=NormalKernel, normalizeweights::Bool=true)
+function localconstant(x,y,xgrid, h; kernelfun=NormalKernel)
 	K = kernelfun(h)
-	W = kernelmatrix(K,x,xgrid)
-    !normalizeweights && return W
-	normalizecols!(W)
+	Nx = length(x)
+	@assert Nx == length(y) "Length of `x` and `y` must agree."
+	L = length(xgrid)
+	m = zeros(L)	# m is expected y, at points xgrid
+	@inbounds for i in 1:L
+		wu = 0.0
+		wsum = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],xgrid[i])
+			wu += ku * y[j]
+			wsum += ku
+		end
+		m[i] = wu / wsum
+	end
+	return m
+end
+
+function localconstant_aicc(x,y,h; kernelfun=NormalKernel)
+	K = kernelfun(h)
+	Nx = length(x)
+	@assert Nx == length(y) "Length of `x` and `y` must agree."
+
+	sigmasq = 0.0
+	traceH = 0.0
+	@inbounds for i in 1:Nx
+		wu = 0.0
+		wsum = 0.0
+		tH = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],x[i])
+			wu += ku * y[j]
+			wsum += ku
+			if j == i
+				tH = ku
+			end
+		end
+		yp = wu / wsum
+		sigmasq += (y[i] - yp)^2 / Nx
+		traceH += tH / wsum
+	end
+	aicc = AICc(sigmasq,traceH,Nx)
+	return aicc
+end
+
+function localconstantweights(x,xgrid, h; kernelfun=NormalKernel, normalizeweights::Bool=true)
+	K = kernelfun(h)
+	Nx = length(x)
+	L = length(xgrid)
+	W = zeros(Nx,L)	# m is expected y, at points xgrid
+	@inbounds for i in 1:L
+		wsum = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],xgrid[i])
+			W[j,i] = ku
+			wsum += ku
+		end
+		if normalizeweights
+			W[:,i] ./= wsum
+		end
+	end
 	return W
 end
-
-function localconstant(x,y,xgrid, h; kernelfun::Function=NormalKernel, normalizeweights::Bool=true)
-	W = localconstantweights(x,xgrid, h; kernelfun, normalizeweights)
-	return W'*y
-end
-
 
 
 
@@ -90,42 +137,105 @@ end
 
 
 ## LOCAL LINEAR REGRESSION
-function locallinearweights(x,xgrid, h; kernelfun::Function=NormalKernel, normalizeweights::Bool=true)
+function locallinear(x,y,xgrid, h; kernelfun=NormalKernel)
 	K = kernelfun(h)
-	Wk = kernelmatrix(K,x,xgrid)
-	xmx = x .- xgrid'
-	S1 = vec(sum(Wk .* xmx;dims=1))
-	S2 = vec(sum(Wk .* xmx.^2;dims=1))
-	W = Wk .* (S2' .- S1' .* xmx)
-	!normalizeweights && return W
-	normalizecols!(W)
-	return W
-end
-
-
-function locallinear(x,y,xgrid, h; kernelfun::Function=NormalKernel, normalizeweights::Bool=true)
-	W = locallinearweights(x,xgrid, h; kernelfun, normalizeweights)
-	return W'*y
-end
-
-
-function llalphabeta(x,y,xgrid, h; kernelfun::Function=NormalKernel)
-	K = kernelfun(h)
-	W = kernelmatrix(K,x,xgrid)
+	Nx = length(x)
+	@assert Nx == length(y) "Length of `x` and `y` must agree."
 	L = length(xgrid)
-	N = length(x)
+	m = zeros(L)	# m is expected y, at points xgrid
+	@inbounds for i in 1:L
+		s1sum = 0.0
+		s2sum = 0.0
+		wsum = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],xgrid[i])
+			xmx = x[j]- xgrid[i]
+			s1sum += ku*xmx
+			s2sum += ku*xmx^2
+			wsum += ku
+		end
+		s1sum /= wsum
+		s2sum /= wsum
+
+		wu = 0.0
+		wsum = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],xgrid[i])
+			xmx = x[j]- xgrid[i]
+			w = ku * (s2sum - s1sum*xmx)
+			wu += w * y[j]
+			wsum += w
+		end
+		m[i] = wu / wsum
+	end
+	return m
+end
+
+
+
+function locallinear_aicc(x,y, h; kernelfun=NormalKernel)
+	K = kernelfun(h)
+	Nx = length(x)
+	@assert Nx == length(y) "Length of `x` and `y` must agree."
+	
+	sigmasq = 0.0
+	traceH = 0.0
+	@inbounds for i in 1:Nx
+		s1sum = 0.0
+		s2sum = 0.0
+		wsum = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],x[i])
+			xmx = x[j]- x[i]
+			s1sum += ku*xmx
+			s2sum += ku*xmx^2
+			wsum += ku
+		end
+		s1sum /= wsum
+		s2sum /= wsum
+
+		wu = 0.0
+		wsum = 0.0
+		tH = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],x[i])
+			xmx = x[j]- x[i]
+			w = ku * (s2sum - s1sum*xmx)
+			wu += w * y[j]
+			wsum += w
+			if j == i
+				tH = w
+			end
+		end
+		yp = wu / wsum
+		sigmasq += (y[i] - yp)^2 / Nx
+		traceH += tH / wsum
+	end
+	aicc = AICc(sigmasq,traceH,Nx)
+	return aicc
+end
+
+
+
+function llalphabeta(x,y,xgrid, h; kernelfun=NormalKernel)
+	K = kernelfun(h)
+	Nx = length(x)
+	@assert Nx == length(y) "Length of `x` and `y` must agree."
+	L = length(xgrid)
 	avec = zeros(L)
 	bvec = zeros(L)
-	vec1 = ones(N)
-	for i in 1:L
-		l = zeros(2,2)
-		r = zeros(2)
-		for j in 1:N
-			zj = [1,x[j]- xgrid[i]]
-			l += W[j,i]*zj*zj'
-			r += W[j,i]*zj*y[j]
+	@inbounds for i in 1:L
+		l = SMatrix{2,2}(0.0,0.0,0.0,0.0)
+		r = SVector(0.0,0.0)
+		wsum = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],xgrid[i])
+			zj = SVector(1.0,x[j]- xgrid[i])
+			l += ku*zj*zj'
+			r += ku*zj*y[j]
+			wsum += ku
 		end
-		a,b = l \ r
+		a,b = l/wsum \ r/wsum
 		avec[i] = a
 		bvec[i] = b
 	end
@@ -133,68 +243,101 @@ function llalphabeta(x,y,xgrid, h; kernelfun::Function=NormalKernel)
 end
 
 
+function locallinearweights(x,xgrid, h; kernelfun=NormalKernel, normalizeweights::Bool=true)
+	K = kernelfun(h)
+	Nx = length(x)
+	L = length(xgrid)
+	W = zeros(Nx,L)
+	for i in 1:L
+		s1sum = 0.0
+		s2sum = 0.0
+		wsum = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],xgrid[i])
+			xmx = x[j]- xgrid[i]
+			s1sum += ku*xmx
+			s2sum += ku*xmx^2
+			wsum += ku
+		end
+		s1sum /= wsum
+		s2sum /= wsum
+
+		wsum = 0.0
+		for j in 1:Nx
+			ku = unscaledkern(K,x[j],xgrid[i])
+			xmx = x[j]- xgrid[i]
+			w = ku * (s2sum - s1sum*xmx)
+			W[j,i] = w
+			wsum += w
+		end
+		if normalizeweights
+			W[:,i] ./= wsum
+		end
+	end
+	return W
+end
+
 ########################################
 ########################################
 ##### BANDWIDTH SELECTION 
 ########################################
 ########################################
 ## LOOCV
-function leaveoneoutCV_mse(h,x,y; kernelfun::Function=NormalKernel, method=:lc)
-	kde = densityestimator(x)
-	if method in (:nw,:lc,:localconstant)
-		W=localconstantweights(x,x, h; kernelfun, normalizeweights=false)
-		zerodiagonal!(W)
-		normalizecols!(W)
-		mse = mean((y .- W'*y).^2 .* kde)
-	elseif method in (:ll,:locallinear)
-        N = length(x)
-        mse = 0.0
-        inds = eachindex(x)
-        for i in 1:N
-            xtmp = view(x,filter(!=(i),inds))
-            ytmp = view(y,filter(!=(i),inds))
-		    pred = only(locallinear(xtmp,ytmp,[x[i]], h; kernelfun))
-            mse += (y[i] - pred)^2 * kde[i] / N
-        end
-	else
-		error("Unknown method supplied")
+function leaveoneoutCV_mse(h,x,y; kernelfun=NormalKernel, method=:lc, trimmed=true)
+	if trimmed
+		kde = densityestimator(x)
 	end
+	
+	Nx = length(x)
+	@assert Nx == length(y) "Length of `x` and `y` must agree."
+	mse = 0.0
+	inds = eachindex(x)
+	@inbounds for i in 1:Nx
+		xtmp = view(x,filter(!=(i),inds))
+		ytmp = view(y,filter(!=(i),inds))
+		# pred = estimatorfun(xtmp,ytmp,x[i], h, kernelfun)
+		if method in (:nw,:lc,:localconstant)
+			pred = only(localconstant(xtmp,ytmp,x[i], h; kernelfun))
+		elseif method in (:ll,:locallinear,:llalphabeta)
+			pred = only(first(llalphabeta(xtmp,ytmp,x[i], h; kernelfun)))
+		else
+			error("Unknown method supplied")
+		end
+		if trimmed
+			mse += (y[i] - pred)^2 * kde[i] / Nx
+		else
+			mse += (y[i] - pred)^2 / Nx
+		end
+	end
+
 	return mse
 end
 
-function leaveoneoutCV(x, y; kernelfun::Function=NormalKernel, method=:lc, hLB = 0.01, hUB = 10.0)
-	objfun(h) = leaveoneoutCV_mse(h,x,y; kernelfun, method)
+
+
+
+function leaveoneoutCV(x, y; kernelfun=NormalKernel, method=:lc, hLB = silvermanbw(y)/100, hUB = silvermanbw(y)*100,trimmed=true)
+	objfun(h) = leaveoneoutCV_mse(h,x,y; kernelfun, method, trimmed)
 	opt = optimize(objfun,hLB,hUB)
-    # should check convergence before returning...
+	@assert opt.converged "Convergence failed, cannot find optimal bandwidth."
 	return Optim.minimizer(opt)
 end
 
 
-## AICc
-function AICc(y::AbstractVector{T1},H::AbstractMatrix{T2}) where {T1,T2}
-	# H == W' for nw and ll, projection matrix for linear regressions
-	yhat = H*y
-	sigmasq = mean(abs2,y - yhat)
-	trH = tr(H)
-	aicc = log(sigmasq) + 1 + 2*(trH + 1)/(length(y)-trH-2)
-	return aicc
-end
-
-function estimatorAICc(h, x, y; kernelfun::Function=NormalKernel, method=:lc)
+function estimatorAICc(h, x, y; kernelfun=NormalKernel, method=:lc)
     if method in (:nw,:lc,:localconstant)
-		W=localconstantweights(x, x, h; kernelfun)
-	elseif method in (:ll,:locallinear)
-		W = locallinearweights(x, x, h; kernelfun)
+		return localconstant_aicc(x, y, h; kernelfun)
+	elseif method in (:ll,:locallinear,:llalphabeta)
+		return locallinear_aicc(x, y, h; kernelfun)
 	else
 		error("Unknown method supplied")
 	end
-    return AICc(y,W')
 end
 
-function optimizeAICc(x, y; kernelfun::Function=NormalKernel, method=:lc, hLB = 0.01, hUB = 10.0)
+function optimizeAICc(x, y; kernelfun=NormalKernel, method=:lc, hLB = silvermanbw(y)/100, hUB = silvermanbw(y)*100)
     objfun(h) = estimatorAICc(h,x,y; kernelfun, method)
 	opt = optimize(objfun,hLB,hUB)
-    # should check convergence before returning...
+	@assert opt.converged "Convergence failed, cannot find optimal bandwidth."
 	return Optim.minimizer(opt)
 end
 
@@ -215,9 +358,9 @@ $SIGNATURES
 
 Search for the optimal bandwidth to use for the local regression of `y` against `x` using `method ∈ (:lc,:ll)`.
 
-The keyword argument `bandwidthselection` should be `:aicc` for the bias-correct AICc method or `:loocv` for leave-one-out cross validation. `hLB` and `hUB` are the lower and upper bounds used when searching for the optimal bandwidth.
+The keyword argument `bandwidthselection` should be `:aicc` for the bias-corrected AICc method or `:loocv` for leave-one-out cross validation. `hLB` and `hUB` are the lower and upper bounds used when searching for the optimal bandwidth.
 """
-function optimalbandwidth(x, y; kernelfun::Function=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB=1e-2, hUB=10.0)
+function optimalbandwidth(x, y; kernelfun=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB = silvermanbw(y)/100, hUB = silvermanbw(y)*100)
     # automatically select bandwidth
     if bandwidthselection in (:cv, :loocv, :leaveoneoutcv)
         h = leaveoneoutCV(x,y; kernelfun, method, hLB, hUB)
@@ -237,9 +380,9 @@ Estimate a local regression of `y` against `x` evaluated at the values `xgrid` u
 
 The keyword argument `method` can be `:lc` for a local constant estimator (Nadaraya-Watson) or `:ll` for a local linear estimator.
 
-The keyword argument `kernelfun` should be a function that constructs a `KernelFunctions.jl` kernel with a given bandwidth. Defaults to `NormalKernel` (defined and exported by this package.)
+The keyword argument `kernelfun` should be a function that constructs a kernel with a given bandwidth. Defaults to `NormalKernel` (defined and exported by this package.)
 """
-function npregress(x,y,xgrid,h; kernelfun::Function=NormalKernel, method=:lc)
+function npregress(x,y,xgrid,h; kernelfun=NormalKernel, method=:lc)
     if method in (:nw,:lc,:localconstant)
 		return localconstant(x,y,xgrid,h; kernelfun)
 	elseif method in (:ll,:locallinear)
@@ -261,7 +404,7 @@ The keyword argument `bandwidthselection` should be `:aicc` for the bias-correct
 
 The keyword argument `kernelfun` should be a function that constructs a `KernelFunctions.jl` kernel with a given bandwidth. Defaults to `NormalKernel` (defined and exported by this package.)
 """
-function npregress(x, y, xgrid=x; kernelfun::Function=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB=1e-2, hUB=10.0)
+function npregress(x, y, xgrid=x; kernelfun=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB = silvermanbw(y)/100, hUB = silvermanbw(y)*100)
     h = optimalbandwidth(x,y; kernelfun, method, bandwidthselection, hLB, hUB)
     return npregress(x,y,xgrid,h; kernelfun, method)
 end

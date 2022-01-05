@@ -5,18 +5,20 @@
 # --- begin
 abstract type AbstractKernel end
 
-## Allows to iterate over kernels
-Base.length(::AbstractKernel) = 1
-Base.iterate(k::AbstractKernel) = (k, nothing)
-Base.iterate(k::AbstractKernel, ::Any) = nothing
 
+"""
+    (k::AbstractKernel)(x, xg)
 
+Evaluate the kernel for the pair of values `(x,xg)`.
+"""
 (k::AbstractKernel)(x, xg) = kern(k, x, xg)
-scaling(k::AbstractKernel) = k.constant / k.h
+kern(k::AbstractKernel, x, xg) = scaling(k) * unscaledkern(k,x,xg)
 bandwidth(k::AbstractKernel) = k.h
+scaling(k::AbstractKernel) = k.constant / k.h
+
 
 function Base.show(io::IO, k::T) where {T<:AbstractKernel}
-    return print(io, "$T (h = ", k.h, ", scaling = ",scaling(k),")")
+    return print(io, "$T (h = ", k.h, ")")
 end
 # --- end
 
@@ -26,9 +28,16 @@ struct GaussianKernel{T<:Real,S<:Real} <: AbstractKernel
     h::T
     constant::S
 end
-GaussianKernel(h::T, s::S=1/sqrt(2*pi)) where {T,S} = GaussianKernel{T,S}(h,s)
-kern(k::GaussianKernel, x, xg) =  exp(-((x-xg)/k.h)^2 / 2)
+GaussianKernel(h::T; constant::S=1/sqrt(2*pi)) where {T,S} = GaussianKernel{T,S}(h,constant)
+unscaledkern(k::GaussianKernel, x, xg) =  exp(-((x-xg)/k.h)^2 / 2)
 
+
+"""
+    NormalKernel(h)
+
+Alias of [`GaussianKernel`](@ref).
+"""
+const NormalKernel = GaussianKernel
 
 
 
@@ -38,8 +47,8 @@ struct UniformKernel{T<:Real,S<:Real} <: AbstractKernel
     h::T
     constant::S
 end
-UniformKernel(h::T, s::S=1/2) where {T,S} = UniformKernel{T,S}(h,s)
-kern(k::UniformKernel, x::T, xg) where {T} = abs((x-xg)/k.h) <= 1 ? one(T) : zero(T)
+UniformKernel(h::T; constant::S=1/2) where {T,S} = UniformKernel{T,S}(h,constant)
+unscaledkern(k::UniformKernel, x::T, xg) where {T} = abs((x-xg)/k.h) <= 1 ? one(T) : zero(T)
 
 
 
@@ -49,5 +58,5 @@ struct EpanechnikovKernel{T<:Real,S<:Real} <: AbstractKernel
     h::T
     constant::S
 end
-EpanechnikovKernel(h::T, s::S=3/4) where {T,S} = EpanechnikovKernel{T,S}(h,s)
-kern(k::EpanechnikovKernel, x::T, xg) where {T} = abs((x-xg)/k.h) <= 1 ? 1 - ((x-xg)/k.h)^2 : zero(T)
+EpanechnikovKernel(h::T; constant::S=3/4) where {T,S} = EpanechnikovKernel{T,S}(h,constant)
+unscaledkern(k::EpanechnikovKernel, x::T, xg) where {T} = abs((x-xg)/k.h) <= 1 ? 1 - ((x-xg)/k.h)^2 : zero(T)
