@@ -8,7 +8,6 @@ module NonparametricRegression
 using LinearAlgebra
 using Statistics
 using StaticArrays
-using Optim
 using DocStringExtensions
 
 
@@ -19,6 +18,7 @@ export optimalbandwidth, leaveoneoutCV, optimizeAICc
 export npregress
 
 include("kernels.jl")
+include("univariateopt.jl")
 
 
 ########################################
@@ -319,8 +319,8 @@ end
 function leaveoneoutCV(x, y; kernelfun=NormalKernel, method=:lc, hLB = silvermanbw(y)/100, hUB = silvermanbw(y)*100,trimmed=true)
 	objfun(h) = leaveoneoutCV_mse(h,x,y; kernelfun, method, trimmed)
 	opt = optimize(objfun,hLB,hUB)
-	@assert opt.converged "Convergence failed, cannot find optimal bandwidth."
-	return Optim.minimizer(opt)
+	# @assert opt.converged "Convergence failed, cannot find optimal bandwidth."
+	return opt
 end
 
 
@@ -337,8 +337,8 @@ end
 function optimizeAICc(x, y; kernelfun=NormalKernel, method=:lc, hLB = silvermanbw(y)/100, hUB = silvermanbw(y)*100)
     objfun(h) = estimatorAICc(h,x,y; kernelfun, method)
 	opt = optimize(objfun,hLB,hUB)
-	@assert opt.converged "Convergence failed, cannot find optimal bandwidth."
-	return Optim.minimizer(opt)
+	# @assert opt.converged "Convergence failed, cannot find optimal bandwidth."
+	return opt
 end
 
 
@@ -402,7 +402,7 @@ The keyword argument `method` can be `:lc` for a local constant estimator (Nadar
 
 The keyword argument `bandwidthselection` should be `:aicc` for the bias-correct AICc method or `:loocv` for leave-one-out cross validation. `hLB` and `hUB` are the lower and upper bounds used when searching for the optimal bandwidth.
 
-The keyword argument `kernelfun` should be a function that constructs a `KernelFunctions.jl` kernel with a given bandwidth. Defaults to `NormalKernel` (defined and exported by this package.)
+The keyword argument `kernelfun` should be a function that constructs a kernel with a given bandwidth. Defaults to `NormalKernel` (defined and exported by this package.)
 """
 function npregress(x, y, xgrid=x; kernelfun=NormalKernel, method=:lc, bandwidthselection=:aicc, hLB = silvermanbw(y)/100, hUB = silvermanbw(y)*100)
     h = optimalbandwidth(x,y; kernelfun, method, bandwidthselection, hLB, hUB)
