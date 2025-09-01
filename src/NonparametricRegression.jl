@@ -16,9 +16,11 @@ export localconstant, localconstantweights
 export locallinear, llalphabeta, locallinearweights
 export optimalbandwidth, leaveoneoutCV, optimizeAICc
 export npregress
+export npvaryingcoef, predict_varyingcoef, varyingcoefficientweights
 
 include("kernels.jl")
 include("univariateopt.jl")
+include("varyingcoefficient.jl")
 
 
 ########################################

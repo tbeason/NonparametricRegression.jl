@@ -129,6 +129,10 @@ xg = collect(-1:0.5:1)
 end
 
 
+# Include varying coefficient tests
+include("test_varyingcoefficient.jl")
+
+
 @testset "Unexported" begin
     @testset "Utilities" begin
         @test NonparametricRegression.AICc(1,1,100) ≈ 0 + 1 + 2*(1+1)/(100-1-2)
