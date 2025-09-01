@@ -24,11 +24,48 @@ The two important exported convenience methods are `npregress` and `optimalbandw
 
 ## Examples
 
+### Basic univariate regression
 ```julia
 using NonparametricRegression
 
-npregress
+# Generate some data
+x = rand(100)
+y = sin.(2π * x) + 0.1 * randn(100)
 
+# Estimate with automatic bandwidth selection
+ŷ = npregress(x, y; method=:ll, bandwidthselection=:aicc)
+
+# Or specify bandwidth manually
+ŷ_manual = npregress(x, y, x, 0.1; method=:lc)
+```
+
+### Varying coefficient models
+```julia
+using NonparametricRegression
+
+# Generate data with state-dependent coefficients
+N = 500
+z = rand(N)  # State variable
+X = [ones(N) randn(N, 2)]  # Design matrix: intercept + 2 covariates
+
+# True varying coefficients
+β₁(z) = 1 + z
+β₂(z) = 2 - z^2
+β₃(z) = 0.5 * sin(2π * z)
+
+# Generate response
+y = [X[i, :]' * [β₁(z[i]), β₂(z[i]), β₃(z[i])] for i in 1:N] + 0.1 * randn(N)
+
+# Estimate varying coefficients
+zgrid = 0:0.1:1
+B = npvaryingcoef(X, y, z, zgrid; method=:ll, bandwidthselection=:aicc)
+
+# B is a 3×11 matrix where B[:, i] contains the coefficients at zgrid[i]
+
+# Predict for new data
+X_new = [ones(10) randn(10, 2)]
+z_new = rand(10)
+y_pred = predict_varyingcoef(X_new, z_new, B, zgrid, 0.1; method=:ll)
 ```
 
 ## Detail
